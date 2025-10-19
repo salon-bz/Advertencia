@@ -8,9 +8,10 @@
   <!-- Fondo partículas -->
   <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.11.1/tsparticles.bundle.min.js"></script>
 
+  <!-- Firebase -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCV7fX9F52npHhdr0v1WMvsoupzVlzDebY",
@@ -25,14 +26,24 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-
     const contenedor = document.getElementById("productos");
+
+    function renderEstrellas(id, rating) {
+      let estrellas = "";
+      for (let i = 1; i <= 5; i++) {
+        estrellas += `
+          <span class="estrella ${i <= rating ? 'activa' : ''}" data-id="${id}" data-valor="${i}">★</span>
+        `;
+      }
+      return estrellas;
+    }
 
     onValue(ref(db, "productos"), (snapshot) => {
       contenedor.innerHTML = "";
       const data = snapshot.val();
       if (!data) return;
-      Object.values(data).forEach(producto => {
+
+      Object.entries(data).forEach(([id, producto]) => {
         let preciosHTML = "";
         if (producto.precios) {
           producto.precios.forEach(precio => {
@@ -43,12 +54,41 @@
               </div>`;
           });
         }
+
+        const rating = producto.rating || 0;
+        const votos = producto.votos || 0;
+
         contenedor.innerHTML += `
           <div class="producto">
             <img src="${producto.imagen}" alt="${producto.titulo}">
             <h2>${producto.titulo}</h2>
+
+            <div class="rating-box" id="rating-${id}">
+              <div class="estrellas">${renderEstrellas(id, Math.round(rating))}</div>
+              <p class="rating-text">${rating.toFixed(1)} / 5 (${votos} votos)</p>
+              <button class="btn-calificar" data-id="${id}">Calificar</button>
+            </div>
+
             <div class="precios">${preciosHTML}</div>
           </div>`;
+      });
+
+      // Activar eventos de calificación
+      document.querySelectorAll(".estrella").forEach(estrella => {
+        estrella.addEventListener("click", e => {
+          const id = e.target.dataset.id;
+          const valor = parseInt(e.target.dataset.valor);
+          const productoRef = ref(db, "productos/" + id);
+
+          onValue(productoRef, (snap) => {
+            const prod = snap.val();
+            if (!prod) return;
+            const votos = (prod.votos || 0) + 1;
+            const nuevoRating = ((prod.rating || 0) * (votos - 1) + valor) / votos;
+
+            update(productoRef, { rating: nuevoRating, votos: votos });
+          }, { onlyOnce: true });
+        });
       });
     });
 
@@ -61,7 +101,7 @@
           shape: { type: "circle" },
           opacity: { value: 0.5 },
           size: { value: 3 },
-          move: { enable: true, speed: 1, direction: "none", outModes: "out" },
+          move: { enable: true, speed: 1 },
           links: { enable: true, color: "#00ffff", opacity: 0.4, distance: 120 }
         }
       });
@@ -93,8 +133,8 @@
     }
     #productos {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
       padding: 20px;
       z-index: 2;
       position: relative;
@@ -104,9 +144,11 @@
       border: 1px solid #0ff;
       border-radius: 15px;
       box-shadow: 0 0 25px #00ffff55;
-      padding: 15px;
+      padding: 10px;
       text-align: center;
       transition: transform .3s;
+      max-width: 250px;
+      margin: 0 auto;
     }
     .producto:hover {
       transform: scale(1.05);
@@ -114,22 +156,22 @@
     }
     .producto img {
       width: 100%;
-      height: 180px;
-      object-fit: cover;
+      height: auto;
       border-radius: 10px;
       margin-bottom: 10px;
     }
     .precio-item {
-      margin: 8px 0;
+      margin: 6px 0;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      font-size: 0.9em;
     }
     .btn-comprar {
       background: #00ffff33;
       border: 1px solid #00ffff;
       color: #00ffff;
-      padding: 6px 10px;
+      padding: 4px 8px;
       border-radius: 10px;
       text-decoration: none;
       transition: .3s;
@@ -139,6 +181,47 @@
       color: #000;
       box-shadow: 0 0 15px #00ffff;
     }
+
+    /* Rating */
+    .rating-box {
+      margin-bottom: 10px;
+    }
+    .estrellas {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 5px;
+    }
+    .estrella {
+      font-size: 20px;
+      color: #555;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    .estrella:hover,
+    .estrella.activa {
+      color: #ff0;
+      text-shadow: 0 0 10px #ff0;
+    }
+    .rating-text {
+      font-size: 0.85em;
+      color: #aaa;
+      margin-bottom: 5px;
+    }
+    .btn-calificar {
+      background: #00ffff33;
+      border: 1px solid #00ffff;
+      color: #00ffff;
+      padding: 4px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: .3s;
+    }
+    .btn-calificar:hover {
+      background: #00ffff;
+      color: #000;
+      box-shadow: 0 0 15px #00ffff;
+    }
+
     footer {
       text-align: center;
       padding: 20px;
@@ -156,4 +239,4 @@
   <div id="productos"></div>
   <footer>© 2024 - 2025 𝐋𝐔𝐂𝐊 𝐗!𝐓</footer>
 </body>
-</html></html>
+</html>
