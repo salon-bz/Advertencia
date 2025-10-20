@@ -38,6 +38,19 @@
       return estrellas;
     }
 
+    function usuarioYaCalifico(id) {
+      const calificados = JSON.parse(localStorage.getItem("calificados") || "[]");
+      return calificados.includes(id);
+    }
+
+    function guardarCalificacionLocal(id) {
+      const calificados = JSON.parse(localStorage.getItem("calificados") || "[]");
+      if (!calificados.includes(id)) {
+        calificados.push(id);
+        localStorage.setItem("calificados", JSON.stringify(calificados));
+      }
+    }
+
     onValue(ref(db, "productos"), (snapshot) => {
       contenedor.innerHTML = "";
       const data = snapshot.val();
@@ -57,6 +70,7 @@
 
         const rating = producto.rating || 0;
         const votos = producto.votos || 0;
+        const yaCalifico = usuarioYaCalifico(id);
 
         contenedor.innerHTML += `
           <div class="producto">
@@ -66,17 +80,30 @@
             <div class="rating-box" id="rating-${id}">
               <div class="estrellas">${renderEstrellas(id, Math.round(rating))}</div>
               <p class="rating-text">${rating.toFixed(1)} / 5 (${votos} votos)</p>
-              <button class="btn-calificar" data-id="${id}">Calificar</button>
+              ${yaCalifico ? '' : `<button class="btn-calificar" data-id="${id}">Calificar</button>`}
             </div>
 
             <div class="precios">${preciosHTML}</div>
           </div>`;
       });
 
-      // Activar eventos de calificación
+      // Mostrar estrellas solo al presionar Calificar
+      document.querySelectorAll(".btn-calificar").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const id = e.target.dataset.id;
+          const ratingBox = document.getElementById("rating-" + id);
+          const estrellasDiv = ratingBox.querySelector(".estrellas");
+          estrellasDiv.classList.add("activo");
+          e.target.style.display = "none";
+        });
+      });
+
+      // Calificar producto
       document.querySelectorAll(".estrella").forEach(estrella => {
         estrella.addEventListener("click", e => {
           const id = e.target.dataset.id;
+          if (usuarioYaCalifico(id)) return; // impedir calificar dos veces
+
           const valor = parseInt(e.target.dataset.valor);
           const productoRef = ref(db, "productos/" + id);
 
@@ -86,7 +113,17 @@
             const votos = (prod.votos || 0) + 1;
             const nuevoRating = ((prod.rating || 0) * (votos - 1) + valor) / votos;
 
-            update(productoRef, { rating: nuevoRating, votos: votos });
+            update(productoRef, { rating: nuevoRating, votos: votos }).then(() => {
+              guardarCalificacionLocal(id);
+
+              const ratingBox = document.getElementById("rating-" + id);
+              const estrellasDiv = ratingBox.querySelector(".estrellas");
+              const ratingText = ratingBox.querySelector(".rating-text");
+
+              estrellasDiv.classList.remove("activo");
+              estrellasDiv.innerHTML = renderEstrellas(id, Math.round(nuevoRating));
+              ratingText.textContent = `${nuevoRating.toFixed(1)} / 5 (${votos} votos)`;
+            });
           }, { onlyOnce: true });
         });
       });
@@ -190,6 +227,10 @@
       display: flex;
       justify-content: center;
       margin-bottom: 5px;
+      pointer-events: none;
+    }
+    .estrellas.activo {
+      pointer-events: auto;
     }
     .estrella {
       font-size: 20px;
