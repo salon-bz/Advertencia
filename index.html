@@ -49,6 +49,22 @@
       }
     }
 
+    // Función para mostrar/ocultar los precios del producto
+    function togglePrecios(id) {
+      const preciosDiv = document.getElementById(`precios-${id}`);
+      const btn = document.getElementById(`btn-precios-${id}`);
+      
+      // La clase 'oculto' está en el CSS para ocultar los precios inicialmente
+      preciosDiv.classList.toggle('oculto'); 
+      
+      // Cambiar el texto del botón según si están ocultos o visibles
+      if (preciosDiv.classList.contains('oculto')) {
+        btn.textContent = 'Ver Precios';
+      } else {
+        btn.textContent = 'Ocultar Precios';
+      }
+    }
+
     // === Mostrar productos y calificaciones ===
     onValue(ref(db, "productos"), (snapshot) => {
       contenedor.innerHTML = "";
@@ -59,7 +75,6 @@
         let preciosHTML = "";
         if (producto.precios) {
           producto.precios.forEach(precio => {
-            // --- INICIO DE LA MODIFICACIÓN ---
             // Se crea el texto del mensaje incluyendo el titulo del producto y el precio.
             const mensaje = `Hola me interesa el producto "${producto.titulo}" con el precio ${precio}.`;
             // Se codifica el mensaje para que sea válido en la URL de WhatsApp.
@@ -70,7 +85,6 @@
                 <span>${precio}</span>
                 <a href="${whatsappLink}" target="_blank" class="btn-comprar">Comprar</a>
               </div>`;
-            // --- FIN DE LA MODIFICACIÓN ---
           });
         }
 
@@ -87,10 +101,24 @@
               <p class="rating-text">${rating.toFixed(1)} / 5 (${votos} votos)</p>
               ${yaCalifico ? '' : `<button class="btn-calificar" data-id="${id}">Calificar</button>`}
             </div>
-            <div class="precios">${preciosHTML}</div>
+            
+            <button id="btn-precios-${id}" class="btn-toggle-precios" data-id="${id}">Ver Precios</button>
+            
+            <div class="precios oculto" id="precios-${id}">${preciosHTML}</div>
           </div>`;
       });
+      
+      // === Configuración de Event Listeners (Controladores de Eventos) ===
 
+      // 1. Botones de Precios
+      document.querySelectorAll(".btn-toggle-precios").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const id = e.target.dataset.id;
+          togglePrecios(id); // Llama a la nueva función
+        });
+      });
+
+      // 2. Botones de Calificar (código original)
       document.querySelectorAll(".btn-calificar").forEach(btn => {
         btn.addEventListener("click", e => {
           const id = e.target.dataset.id;
@@ -101,6 +129,7 @@
         });
       });
 
+      // 3. Estrellas de Calificación (código original)
       document.querySelectorAll(".estrella").forEach(estrella => {
         estrella.addEventListener("click", e => {
           const id = e.target.dataset.id;
@@ -129,7 +158,7 @@
       });
     });
 
-    // === SISTEMA DE RESEÑAS ===
+    // === SISTEMA DE RESEÑAS (código original) ===
     const reseñaInput = document.getElementById("reseñaTexto");
     const nombreInput = document.getElementById("reseñaNombre");
     const btnReseña = document.getElementById("btnReseña");
@@ -188,7 +217,7 @@
       });
     });
 
-    // === FONDO DE PARTÍCULAS ===
+    // === FONDO DE PARTÍCULAS (código original) ===
     window.onload = () => {
       tsParticles.load("tsparticles", {
         background: { color: "#000" },
@@ -230,7 +259,10 @@
     }
     #productos {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      /* --- INICIO DE LA MODIFICACIÓN CLAVE --- */
+      /* Cambiamos para forzar una sola columna, centrada y abarcando el ancho disponible */
+      grid-template-columns: 1fr; 
+      /* --- FIN DE LA MODIFICACIÓN CLAVE --- */
       gap: 15px;
       padding: 20px;
       z-index: 2;
@@ -244,7 +276,8 @@
       padding: 10px;
       text-align: center;
       transition: transform .3s;
-      max-width: 250px;
+      /* Aseguramos que el producto no sea demasiado ancho, pero se centre */
+      max-width: 350px; 
       margin: 0 auto;
     }
     .producto:hover {
@@ -257,6 +290,42 @@
       border-radius: 10px;
       margin-bottom: 10px;
     }
+    
+    /* === ESTILOS PARA OCULTAR/MOSTRAR PRECIOS === */
+    .precios.oculto {
+      /* Oculta los precios inicialmente */
+      max-height: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition: max-height 0.4s ease-out, opacity 0.4s ease-out;
+    }
+    .precios {
+      /* Estilos para cuando los precios están visibles */
+      max-height: 500px; /* Suficiente altura para que se muestren */
+      opacity: 1;
+      transition: max-height 0.4s ease-in, opacity 0.4s ease-in;
+    }
+    .btn-toggle-precios {
+      /* Estilo del nuevo botón "Ver Precios" */
+      background: #ff00ff33; /* Un color distinto para diferenciarlo */
+      border: 1px solid #ff00ff;
+      color: #ff00ff;
+      padding: 6px 15px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: .3s;
+      margin: 10px 0;
+      display: block; /* Para que ocupe todo el ancho disponible */
+      width: 90%; 
+      margin: 10px auto; 
+    }
+    .btn-toggle-precios:hover { 
+      background: #ff00ff; 
+      color: #000; 
+      box-shadow: 0 0 15px #ff00ff; 
+    }
+    /* === FIN ESTILOS PARA OCULTAR/MOSTRAR PRECIOS === */
+
     .precio-item {
       margin: 6px 0;
       display: flex;
