@@ -5,10 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>𝐃𝐑𝐈𝐏 𝐂𝐋𝐈𝐄𝐍𝐓 | 𝐌𝐎𝐁𝐈𝐋𝐄</title>
 
-  <!-- Fondo partículas -->
   <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.11.1/tsparticles.bundle.min.js"></script>
 
-  <!-- Firebase -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getDatabase, ref, onValue, update, push, set, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
@@ -61,11 +59,18 @@
         let preciosHTML = "";
         if (producto.precios) {
           producto.precios.forEach(precio => {
+            // --- INICIO DE LA MODIFICACIÓN ---
+            // Se crea el texto del mensaje incluyendo el titulo del producto y el precio.
+            const mensaje = `Hola me interesa el producto "${producto.titulo}" con el precio ${precio}.`;
+            // Se codifica el mensaje para que sea válido en la URL de WhatsApp.
+            const whatsappLink = `https://wa.me/573142369516?text=${encodeURIComponent(mensaje)}`;
+            
             preciosHTML += `
               <div class="precio-item">
                 <span>${precio}</span>
-                <a href="https://wa.me/573142369516?text=Hola%20me%20interesa%20${encodeURIComponent(precio)}%20de%20el%20𝐃𝐑𝐈𝐏%20𝐂𝐋𝐈𝐄𝐍𝐓%20|%20𝐌𝐎𝐁𝐈𝐋𝐄" target="_blank" class="btn-comprar">Comprar</a>
+                <a href="${whatsappLink}" target="_blank" class="btn-comprar">Comprar</a>
               </div>`;
+            // --- FIN DE LA MODIFICACIÓN ---
           });
         }
 
@@ -362,7 +367,6 @@
   <h3>OFERTAS Y BENEFICIOS</h3>
   <div id="productos"></div>
 
-  <!-- BOX DE RESEÑAS (final de la página) -->
   <section id="reseñas">
     <h3>💬 Deja tu reseña</h3>
     <input type="text" id="reseñaNombre" placeholder="Tu nombre (máx. 40)" maxlength="40"><br>
