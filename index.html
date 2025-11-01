@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>𝐃𝐑𝐈𝐏 𝐂𝐋𝐈𝐄𝐍𝐓 | 𝐌𝐎𝐁𝐈𝐋𝐄</title>
+  <title>𝐋𝐔𝐂𝐊 𝐗!𝐓 | 𝐒𝐓𝐎𝐑𝐄</title>
 
   <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.11.1/tsparticles.bundle.min.js"></script>
 
@@ -25,6 +25,19 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const contenedor = document.getElementById("productos");
+    const loader = document.getElementById("loader"); 
+
+    // === NUEVA FUNCIÓN: REGISTRAR CLICK DE COMPRA ===
+    function registrarClickCompra(id, precio) {
+        const clicksRef = ref(db, `clicks_ventas/${id}`);
+        // Incrementa el contador de clics para este producto
+        onValue(clicksRef, (snapshot) => {
+            const currentClicks = snapshot.val() || 0;
+            update(clicksRef.parent, { [id]: currentClicks + 1 })
+            .catch(error => console.error("Error al registrar click:", error));
+        }, { onlyOnce: true });
+    }
+    // ===============================================
 
     function renderEstrellas(id, rating) {
       let estrellas = "";
@@ -49,15 +62,12 @@
       }
     }
 
-    // Función para mostrar/ocultar los precios del producto
     function togglePrecios(id) {
       const preciosDiv = document.getElementById(`precios-${id}`);
       const btn = document.getElementById(`btn-precios-${id}`);
       
-      // La clase 'oculto' está en el CSS para ocultar los precios inicialmente
       preciosDiv.classList.toggle('oculto'); 
       
-      // Cambiar el texto del botón según si están ocultos o visibles
       if (preciosDiv.classList.contains('oculto')) {
         btn.textContent = 'Ver Precios';
       } else {
@@ -65,25 +75,43 @@
       }
     }
 
-    // === Mostrar productos y calificaciones ===
-    onValue(ref(db, "productos"), (snapshot) => {
+    // === MOSTRAR PRODUCTOS, CALIFICACIONES Y CLICKS ===
+    // Escucha de productos y clics al mismo tiempo
+    onValue(ref(db, "/"), (snapshot) => {
       contenedor.innerHTML = "";
-      const data = snapshot.val();
-      if (!data) return;
+      const data = snapshot.val() || {};
+      const productosData = data.productos || {};
+      const clicksData = data.clicks_ventas || {}; // Obtener datos de clics
 
-      Object.entries(data).forEach(([id, producto]) => {
+      if (Object.keys(productosData).length === 0) {
+        loader.style.display = 'none';
+        return;
+      }
+
+      let productosArray = Object.entries(productosData).map(([id, producto]) => ({
+          id,
+          ...producto,
+          clicks: clicksData[id] || 0 // Añadir contador de clics
+      }));
+      
+      // === LÓGICA DE REORDENAMIENTO: Poner el más vendido primero ===
+      productosArray.sort((a, b) => b.clicks - a.clicks);
+      const masVendidoId = productosArray[0] ? productosArray[0].id : null;
+
+      productosArray.forEach((producto) => {
+        const id = producto.id;
         let preciosHTML = "";
         if (producto.precios) {
           producto.precios.forEach(precio => {
-            // Se crea el texto del mensaje incluyendo el titulo del producto y el precio.
             const mensaje = `Hola me interesa el producto "${producto.titulo}" con el precio ${precio}.`;
-            // Se codifica el mensaje para que sea válido en la URL de WhatsApp.
             const whatsappLink = `https://wa.me/573142369516?text=${encodeURIComponent(mensaje)}`;
             
             preciosHTML += `
               <div class="precio-item">
                 <span>${precio}</span>
-                <a href="${whatsappLink}" target="_blank" class="btn-comprar">Comprar</a>
+                <a href="${whatsappLink}" target="_blank" 
+                   class="btn-comprar tracked-buy" 
+                   data-id="${id}" data-precio="${precio}">Comprar</a>
               </div>`;
           });
         }
@@ -91,9 +119,12 @@
         const rating = producto.rating || 0;
         const votos = producto.votos || 0;
         const yaCalifico = usuarioYaCalifico(id);
-
+        const esMasVendido = id === masVendidoId && producto.clicks > 0; // Solo si tiene más de 0 clics
+        
+        // === HTML con Etiqueta de "MÁS VENDIDO" ===
         contenedor.innerHTML += `
-          <div class="producto">
+          <div class="producto ${esMasVendido ? 'mas-vendido-box' : ''}">
+            ${esMasVendido ? '<div class="ribbon"><span>MÁS VENDIDO</span></div>' : ''}
             <img src="${producto.imagen}" alt="${producto.titulo}">
             <h2>${producto.titulo}</h2>
             <div class="rating-box" id="rating-${id}">
@@ -108,17 +139,28 @@
           </div>`;
       });
       
-      // === Configuración de Event Listeners (Controladores de Eventos) ===
+      loader.style.display = 'none';
+
+      // === CONFIGURACIÓN DE EVENT LISTENERS ACTUALIZADA ===
 
       // 1. Botones de Precios
       document.querySelectorAll(".btn-toggle-precios").forEach(btn => {
         btn.addEventListener("click", e => {
           const id = e.target.dataset.id;
-          togglePrecios(id); // Llama a la nueva función
+          togglePrecios(id);
+        });
+      });
+      
+      // 2. Botones de Compra (NUEVO: Seguimiento de clics)
+      document.querySelectorAll(".tracked-buy").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const id = e.target.dataset.id;
+          const precio = e.target.dataset.precio;
+          registrarClickCompra(id, precio);
         });
       });
 
-      // 2. Botones de Calificar (código original)
+      // 3. Botones de Calificar y Estrellas (Lógica original)
       document.querySelectorAll(".btn-calificar").forEach(btn => {
         btn.addEventListener("click", e => {
           const id = e.target.dataset.id;
@@ -129,7 +171,6 @@
         });
       });
 
-      // 3. Estrellas de Calificación (código original)
       document.querySelectorAll(".estrella").forEach(estrella => {
         estrella.addEventListener("click", e => {
           const id = e.target.dataset.id;
@@ -158,13 +199,34 @@
       });
     });
 
-    // === SISTEMA DE RESEÑAS (código original) ===
+    // === LÓGICA DE RESTRICCIÓN DE COMENTARIOS (original) ===
+    const _24_HORAS_EN_MS = 24 * 60 * 60 * 1000;
+    // ... funciones puedeComentar y guardarComentarioLocal (sin cambios) ...
+    function puedeComentar() {
+      const ultimoComentario = localStorage.getItem("ultimoComentarioTimestamp");
+      if (!ultimoComentario) {
+        return true; 
+      }
+      const tiempoTranscurrido = Date.now() - parseInt(ultimoComentario);
+      return tiempoTranscurrido > _24_HORAS_EN_MS;
+    }
+
+    function guardarComentarioLocal() {
+      localStorage.setItem("ultimoComentarioTimestamp", Date.now().toString());
+    }
+
+    // === SISTEMA DE RESEÑAS (original) ===
     const reseñaInput = document.getElementById("reseñaTexto");
     const nombreInput = document.getElementById("reseñaNombre");
     const btnReseña = document.getElementById("btnReseña");
     const listaReseñas = document.getElementById("listaReseñas");
 
     btnReseña.addEventListener("click", () => {
+      if (!puedeComentar()) {
+        alert("Solo puedes dejar un comentario cada 24 horas. ¡Vuelve pronto!");
+        return;
+      }
+      
       const texto = reseñaInput.value.trim();
       const nombre = nombreInput.value.trim();
       if (texto.length === 0 || nombre.length === 0) {
@@ -180,13 +242,13 @@
       const nuevaReseña = push(reseñasRef);
       set(nuevaReseña, { nombre, texto, fecha: new Date().toLocaleString() })
         .then(() => {
+          guardarComentarioLocal(); 
           reseñaInput.value = "";
           nombreInput.value = "";
         })
         .catch(() => alert("Error al guardar la reseña. Intenta de nuevo."));
     });
 
-    // Mostrar TODAS las reseñas, borrar las más viejas si pasan de 100
     onValue(ref(db, "reseñas"), (snapshot) => {
       listaReseñas.innerHTML = "";
       const data = snapshot.val();
@@ -196,7 +258,6 @@
       }
 
       const reseñasEntries = Object.entries(data);
-      // Si hay más de 100 reseñas, eliminar las más viejas
       if (reseñasEntries.length > 100) {
         const sobrantes = reseñasEntries.length - 100;
         const reseñasViejas = reseñasEntries.slice(0, sobrantes);
@@ -205,7 +266,6 @@
         });
       }
 
-      // Mostrar todas (las más recientes primero)
       const reseñasArray = reseñasEntries.slice(-100).reverse();
       reseñasArray.forEach(([id, r]) => {
         listaReseñas.innerHTML += `
@@ -217,24 +277,28 @@
       });
     });
 
-    // === FONDO DE PARTÍCULAS (código original) ===
+    // === FONDO DE PARTÍCULAS (original) ===
     window.onload = () => {
       tsParticles.load("tsparticles", {
         background: { color: "#000" },
         particles: {
           number: { value: 80 },
-          color: { value: "#00ffff" },
+          color: { value: "#00FF00" }, /* Verde Neón */
           shape: { type: "circle" },
           opacity: { value: 0.5 },
           size: { value: 3 },
           move: { enable: true, speed: 1 },
-          links: { enable: true, color: "#00ffff", opacity: 0.4, distance: 120 }
+          links: { enable: true, color: "#00FFFF", opacity: 0.4, distance: 120 } /* Azul Eléctrico */
         }
       });
     };
   </script>
 
   <style>
+    /* ---------------------------------------------------- */
+    /* === ESTILOS MODIFICADOS PARA ETIQUETA "MÁS VENDIDO" === */
+    /* ---------------------------------------------------- */
+    
     body {
       margin: 0;
       background: #000;
@@ -242,13 +306,31 @@
       font-family: 'Poppins', sans-serif;
       overflow-x: hidden;
     }
-    h1, h3 {
+    
+    /* Título Principal (h1) - Azul Eléctrico */
+    h1 {
       text-align: center;
-      color: #00ffff;
-      text-shadow: 0 0 15px #00ffff;
+      color: #00FFFF;
+      text-shadow: 0 0 18px #00FFFF, 0 0 25px #00FFFF;
       z-index: 2;
       position: relative;
+      font-size: 2.8em;
+      margin-top: 30px;
+      margin-bottom: 10px;
     }
+
+    /* Subtítulo (h3) - Rojo Neón */
+    h3 {
+      text-align: center;
+      color: #FF00FF;
+      text-shadow: 0 0 12px #FF00FF, 0 0 20px #FF00FF;
+      z-index: 2;
+      position: relative;
+      font-size: 1.5em;
+      margin-bottom: 40px;
+      text-transform: uppercase;
+    }
+
     #tsparticles {
       position: fixed;
       width: 100%;
@@ -257,95 +339,174 @@
       top: 0;
       left: 0;
     }
+    
+    /* === ESTILOS DEL LOADER (sin cambios) === */
+    #loader {
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        background-color: #000;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        transition: opacity 0.5s ease-out;
+    }
+    .spinner {
+        border: 4px solid rgba(0, 255, 0, 0.1);
+        border-top: 4px solid #00FF00;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+    }
+    .loader-text {
+        color: #00FF00;
+        font-size: 1.2em;
+        text-shadow: 0 0 10px #00FF00;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    /* === CONTENEDOR DE PRODUCTOS (COLUMNA ÚNICA) === */
     #productos {
       display: grid;
-      /* --- INICIO DE LA MODIFICACIÓN CLAVE --- */
-      /* Cambiamos para forzar una sola columna, centrada y abarcando el ancho disponible */
       grid-template-columns: 1fr; 
-      /* --- FIN DE LA MODIFICACIÓN CLAVE --- */
-      gap: 15px;
+      gap: 25px; 
       padding: 20px;
       z-index: 2;
       position: relative;
+      justify-items: center; 
     }
+    
     .producto {
-      background: rgba(0,0,20,0.8);
-      border: 1px solid #0ff;
+      background: rgba(0,0,20,0.85);
+      border: 1px solid #00FF00;
       border-radius: 15px;
-      box-shadow: 0 0 25px #00ffff55;
-      padding: 10px;
+      box-shadow: 0 0 25px #00FF0055;
+      padding: 15px;
       text-align: center;
       transition: transform .3s;
-      /* Aseguramos que el producto no sea demasiado ancho, pero se centre */
-      max-width: 350px; 
+      max-width: 450px; 
+      width: 100%; 
       margin: 0 auto;
+      position: relative; /* Clave para posicionar la etiqueta */
+      overflow: hidden; /* Asegura que la etiqueta no cause scroll horizontal */
     }
     .producto:hover {
-      transform: scale(1.05);
-      box-shadow: 0 0 35px #00ffffaa;
+      transform: scale(1.03);
+      box-shadow: 0 0 40px #00FF00aa;
     }
+
+    /* === ESTILO DE LA ETIQUETA MÁS VENDIDO === */
+    .ribbon span {
+    /* ... */
+    background-color: #FF0000; /* Fondo Rojo */
+    /* ... */
+    text-shadow: 0 0 3px #000000; 
+    border: 1px solid #FF0000; /* Borde Cambiado a Rojo */
+    /* Puedes añadir: box-shadow: 0 0 10px #FF0000; si quieres una sombra roja */
+}
+
+
+    .ribbon span {
+        position: absolute;
+        display: block;
+        width: 225px; /* Longitud del texto */
+        padding: 8px 0;
+        background-color: #FF0000; /* Fondo Rojo Neón */
+        box-shadow: 0 5px 10px rgba(0,0,0,0.2);
+        color: #000; /* Texto oscuro para alto contraste */
+        font-size: 14px;
+        font-weight: bold;
+        text-align: center;
+        text-transform: uppercase;
+        
+        /* === ROTACIÓN Y POSICIONAMIENTO CLAVE === */
+        transform: rotate(45deg); 
+        right: -35px; /* Ajuste para que se vea en la esquina */
+        top: 25px; /* Ajuste vertical */
+        
+        /* Efecto Neón para el texto */
+        text-shadow: 0 0 3px #000000; 
+        border: 1px solid #00FFFF; /* Borde Azul Neón para contraste */
+    }
+    /* ======================================= */
+    
     .producto img {
       width: 100%;
       height: auto;
       border-radius: 10px;
-      margin-bottom: 10px;
+      margin-bottom: 15px;
+      border: 1px solid #00FFFF;
     }
     
-    /* === ESTILOS PARA OCULTAR/MOSTRAR PRECIOS === */
+    /* Estilos para precios (sin cambios) */
     .precios.oculto {
-      /* Oculta los precios inicialmente */
       max-height: 0;
       overflow: hidden;
       opacity: 0;
       transition: max-height 0.4s ease-out, opacity 0.4s ease-out;
     }
     .precios {
-      /* Estilos para cuando los precios están visibles */
-      max-height: 500px; /* Suficiente altura para que se muestren */
+      max-height: 500px; 
       opacity: 1;
       transition: max-height 0.4s ease-in, opacity 0.4s ease-in;
+      padding-top: 10px;
+      border-top: 1px dashed #00FFFF55;
     }
+    
+    /* Botón de Ver/Ocultar Precios (Rojo Neón) */
     .btn-toggle-precios {
-      /* Estilo del nuevo botón "Ver Precios" */
-      background: #ff00ff33; /* Un color distinto para diferenciarlo */
-      border: 1px solid #ff00ff;
-      color: #ff00ff;
-      padding: 6px 15px;
+      background: #FF00FF33; 
+      border: 1px solid #FF00FF;
+      color: #FF00FF;
+      padding: 8px 20px;
       border-radius: 10px;
       cursor: pointer;
       transition: .3s;
-      margin: 10px 0;
-      display: block; /* Para que ocupe todo el ancho disponible */
-      width: 90%; 
-      margin: 10px auto; 
+      margin: 15px auto; 
+      display: block; 
+      width: 80%; 
+      font-weight: bold;
+      text-transform: uppercase;
     }
     .btn-toggle-precios:hover { 
-      background: #ff00ff; 
+      background: #FF00FF; 
       color: #000; 
-      box-shadow: 0 0 15px #ff00ff; 
+      box-shadow: 0 0 15px #FF00FF; 
     }
-    /* === FIN ESTILOS PARA OCULTAR/MOSTRAR PRECIOS === */
-
+    
     .precio-item {
-      margin: 6px 0;
+      margin: 8px 0;
+      padding: 5px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.9em;
+      font-size: 1em;
+      background: rgba(0, 255, 255, 0.05);
+      border-radius: 5px;
     }
+    
+    /* Botón Comprar (Azul Eléctrico) */
     .btn-comprar {
-      background: #00ffff33;
-      border: 1px solid #00ffff;
-      color: #00ffff;
-      padding: 4px 8px;
+      background: #00FFFF33;
+      border: 1px solid #00FFFF;
+      color: #00FFFF;
+      padding: 5px 10px;
       border-radius: 10px;
       text-decoration: none;
       transition: .3s;
+      font-size: 0.9em;
     }
     .btn-comprar:hover {
-      background: #00ffff;
+      background: #00FFFF;
       color: #000;
-      box-shadow: 0 0 15px #00ffff;
+      box-shadow: 0 0 15px #00FFFF;
     }
 
     .rating-box { margin-bottom: 10px; }
@@ -356,25 +517,40 @@
       pointer-events: none;
     }
     .estrellas.activo { pointer-events: auto; }
-    .estrella { font-size: 20px; color: #555; cursor: pointer; transition: 0.3s; }
-    .estrella:hover, .estrella.activa { color: #ff0; text-shadow: 0 0 10px #ff0; }
-    .rating-text { font-size: 0.85em; color: #aaa; margin-bottom: 5px; }
-    .btn-calificar {
-      background: #00ffff33; border: 1px solid #00ffff; color: #00ffff;
-      padding: 4px 10px; border-radius: 10px; cursor: pointer; transition: .3s;
+    
+    /* Estrellas (Amarillo Neón) */
+    .estrella { 
+      font-size: 24px; 
+      color: #333;
+      cursor: pointer; 
+      transition: 0.3s; 
     }
-    .btn-calificar:hover { background: #00ffff; color: #000; box-shadow: 0 0 15px #00ffff; }
+    .estrella:hover, .estrella.activa { 
+      color: #FFFF00; 
+      text-shadow: 0 0 10px #FFFF00; 
+    }
+    .rating-text { font-size: 0.9em; color: #888; margin-bottom: 5px; }
+    
+    /* Botón Calificar (Verde Neón) */
+    .btn-calificar {
+      background: #00FF0033; border: 1px solid #00FF00; color: #00FF00;
+      padding: 6px 15px; border-radius: 10px; cursor: pointer; transition: .3s;
+      font-weight: bold;
+    }
+    .btn-calificar:hover { 
+      background: #00FF00; color: #000; box-shadow: 0 0 15px #00FF00; 
+    }
 
-    /* BOX DE RESEÑAS */
+    /* BOX DE RESEÑAS (sin cambios) */
     #reseñas {
       background: rgba(0,0,20,0.85);
-      border: 2px solid #00ffff;
+      border: 2px solid #00FF00;
       border-radius: 20px;
       width: 90%;
-      max-width: 500px;
-      margin: 40px auto;
-      padding: 20px;
-      box-shadow: 0 0 25px #00ffff55;
+      max-width: 550px;
+      margin: 60px auto;
+      padding: 30px;
+      box-shadow: 0 0 35px #00FF0055;
       text-align: center;
       position: relative;
       z-index: 2;
@@ -382,49 +558,68 @@
     #reseñas input, #reseñas textarea {
       width: 90%;
       background: #000;
-      border: 1px solid #00ffff;
-      color: #fff;
+      border: 1px solid #00FFFF;
+      color: #00FF00;
       border-radius: 10px;
-      padding: 8px;
-      margin: 5px;
+      padding: 10px;
+      margin: 8px 0;
+      resize: vertical;
+      box-shadow: 0 0 5px #00FFFF55;
     }
+    /* Botón de Reseña (Rojo Neón) */
     #reseñas button {
-      background: #00ffff33;
-      border: 1px solid #00ffff;
-      color: #00ffff;
-      padding: 8px 15px;
+      background: #FF00FF33;
+      border: 1px solid #FF00FF;
+      color: #FF00FF;
+      padding: 10px 20px;
       border-radius: 10px;
       cursor: pointer;
       transition: .3s;
-    }
-    #reseñas button:hover { background: #00ffff; color: #000; box-shadow: 0 0 15px #00ffff; }
-    #listaReseñas {
-      max-height: 250px;
-      overflow-y: auto;
       margin-top: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    #reseñas button:hover { 
+      background: #FF00FF; 
+      color: #000; 
+      box-shadow: 0 0 15px #FF00FF; 
+    }
+    
+    /* Estilos de lista de reseñas (sin cambios) */
+    #listaReseñas {
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 20px;
       scrollbar-width: thin;
-      scrollbar-color: #00ffff #000;
+      scrollbar-color: #00FF00 #000;
     }
-    #listaReseñas::-webkit-scrollbar { width: 6px; }
-    #listaReseñas::-webkit-scrollbar-thumb { background: #00ffff; border-radius: 10px; }
+    #listaReseñas::-webkit-scrollbar { width: 8px; }
+    #listaReseñas::-webkit-scrollbar-thumb { background: #00FF00; border-radius: 10px; }
+    
     .reseña {
-      border: 1px solid #00ffff44;
+      border: 1px solid #00FFFF44;
       border-radius: 10px;
-      padding: 10px;
-      margin: 10px auto;
+      padding: 15px;
+      margin: 15px auto;
       width: 90%;
-      background: rgba(0,255,255,0.05);
-      box-shadow: 0 0 10px #00ffff22;
+      background: rgba(0, 255, 0, 0.05);
+      box-shadow: 0 0 15px #00FFFF22;
+      text-align: left;
     }
-    .reseña h4 { color: #00ffff; margin: 0; }
+    .reseña h4 { 
+      color: #00FFFF;
+      margin: 0 0 5px 0; 
+      font-size: 1.1em;
+    }
     .reseña p { margin: 5px 0; color: #fff; }
-    .reseña span { font-size: 0.8em; color: #aaa; }
+    .reseña span { font-size: 0.8em; color: #555; }
 
     footer {
       text-align: center;
       padding: 20px;
-      color: #888;
+      color: #00FF00;
       font-size: 0.9em;
+      text-shadow: 0 0 5px #00FF0055;
       z-index: 2;
       position: relative;
     }
@@ -432,8 +627,13 @@
 </head>
 <body>
   <div id="tsparticles"></div>
-  <h1>𝐃𝐑𝐈𝐏 𝐂𝐋𝐈𝐄𝐍𝐓 | 𝐌𝐎𝐁𝐈𝐋𝐄</h1>
-  <h3>OFERTAS Y BENEFICIOS</h3>
+  
+  <div id="loader">
+      <div class="spinner"></div>
+      <div class="loader-text">Cargando Porfavor espere...</div>
+  </div>
+  <h1>𝐋𝐔𝐂𝐊 𝐗!𝐓 | 𝐒𝐓𝐎𝐑𝐄</h1>
+  <h3>COMPRA TU HACK FAVORITO</h3>
   <div id="productos"></div>
 
   <section id="reseñas">
