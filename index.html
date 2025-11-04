@@ -1,65 +1,649 @@
-<!doctype html>
-
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Luck Store — Página actualizada</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>𝐋𝐔𝐂𝐊 𝐗!𝐓 | 𝐒𝐓𝐎𝐑𝐄</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.11.1/tsparticles.bundle.min.js"></script>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, onValue, update, push, set, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCV7fX9F52npHhdr0v1WMvsoupzVlzDebY",
+      authDomain: "princiapal-db0f0.firebaseapp.com",
+      projectId: "princiapal-db0f0",
+      storageBucket: "princiapal-db0f0.firebasestorage.app",
+      messagingSenderId: "656452231715",
+      appId: "1:656452231715:web:bcfacabe149805cf3dc796",
+      measurementId: "G-7H7HNRKDMW",
+      databaseURL: "https://princiapal-db0f0-default-rtdb.firebaseio.com/"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const contenedor = document.getElementById("productos");
+    const loader = document.getElementById("loader"); 
+
+    // === NUEVA FUNCIÓN: REGISTRAR CLICK DE COMPRA ===
+    function registrarClickCompra(id, precio) {
+        const clicksRef = ref(db, `clicks_ventas/${id}`);
+        // Incrementa el contador de clics para este producto
+        onValue(clicksRef, (snapshot) => {
+            const currentClicks = snapshot.val() || 0;
+            update(clicksRef.parent, { [id]: currentClicks + 1 })
+            .catch(error => console.error("Error al registrar click:", error));
+        }, { onlyOnce: true });
+    }
+    // ===============================================
+
+    function renderEstrellas(id, rating) {
+      let estrellas = "";
+      for (let i = 1; i <= 5; i++) {
+        estrellas += `
+          <span class="estrella ${i <= rating ? 'activa' : ''}" data-id="${id}" data-valor="${i}">★</span>
+        `;
+      }
+      return estrellas;
+    }
+
+    function usuarioYaCalifico(id) {
+      const calificados = JSON.parse(localStorage.getItem("calificados") || "[]");
+      return calificados.includes(id);
+    }
+
+    function guardarCalificacionLocal(id) {
+      const calificados = JSON.parse(localStorage.getItem("calificados") || "[]");
+      if (!calificados.includes(id)) {
+        calificados.push(id);
+        localStorage.setItem("calificados", JSON.stringify(calificados));
+      }
+    }
+
+    function togglePrecios(id) {
+      const preciosDiv = document.getElementById(`precios-${id}`);
+      const btn = document.getElementById(`btn-precios-${id}`);
+      
+      preciosDiv.classList.toggle('oculto'); 
+      
+      if (preciosDiv.classList.contains('oculto')) {
+        btn.textContent = 'Ver Precios';
+      } else {
+        btn.textContent = 'Ocultar Precios';
+      }
+    }
+
+    // === MOSTRAR PRODUCTOS, CALIFICACIONES Y CLICKS ===
+    // Escucha de productos y clics al mismo tiempo
+    onValue(ref(db, "/"), (snapshot) => {
+      contenedor.innerHTML = "";
+      const data = snapshot.val() || {};
+      const productosData = data.productos || {};
+      const clicksData = data.clicks_ventas || {}; // Obtener datos de clics
+
+      if (Object.keys(productosData).length === 0) {
+        loader.style.display = 'none';
+        return;
+      }
+
+      let productosArray = Object.entries(productosData).map(([id, producto]) => ({
+          id,
+          ...producto,
+          clicks: clicksData[id] || 0 // Añadir contador de clics
+      }));
+      
+      // === LÓGICA DE REORDENAMIENTO: Poner el más vendido primero ===
+      productosArray.sort((a, b) => b.clicks - a.clicks);
+      const masVendidoId = productosArray[0] ? productosArray[0].id : null;
+
+      productosArray.forEach((producto) => {
+        const id = producto.id;
+        let preciosHTML = "";
+        if (producto.precios) {
+          producto.precios.forEach(precio => {
+            const mensaje = `Hola me interesa el producto "${producto.titulo}" con el precio ${precio}.`;
+            const whatsappLink = `https://wa.me/573142369516?text=${encodeURIComponent(mensaje)}`;
+            
+            preciosHTML += `
+              <div class="precio-item">
+                <span>${precio}</span>
+                <a href="${whatsappLink}" target="_blank" 
+                   class="btn-comprar tracked-buy" 
+                   data-id="${id}" data-precio="${precio}">Comprar</a>
+              </div>`;
+          });
+        }
+
+        const rating = producto.rating || 0;
+        const votos = producto.votos || 0;
+        const yaCalifico = usuarioYaCalifico(id);
+        const esMasVendido = id === masVendidoId && producto.clicks > 0; // Solo si tiene más de 0 clics
+        
+        // === HTML con Etiqueta de "MÁS VENDIDO" ===
+        contenedor.innerHTML += `
+          <div class="producto ${esMasVendido ? 'mas-vendido-box' : ''}">
+            ${esMasVendido ? '<div class="ribbon"><span>MÁS VENDIDO</span></div>' : ''}
+            <img src="${producto.imagen}" alt="${producto.titulo}">
+            <h2>${producto.titulo}</h2>
+            <div class="rating-box" id="rating-${id}">
+              <div class="estrellas">${renderEstrellas(id, Math.round(rating))}</div>
+              <p class="rating-text">${rating.toFixed(1)} / 5 (${votos} votos)</p>
+              ${yaCalifico ? '' : `<button class="btn-calificar" data-id="${id}">Calificar</button>`}
+            </div>
+            
+            <button id="btn-precios-${id}" class="btn-toggle-precios" data-id="${id}">Ver Precios</button>
+            
+            <div class="precios oculto" id="precios-${id}">${preciosHTML}</div>
+          </div>`;
+      });
+      
+      loader.style.display = 'none';
+
+      // === CONFIGURACIÓN DE EVENT LISTENERS ACTUALIZADA ===
+
+      // 1. Botones de Precios
+      document.querySelectorAll(".btn-toggle-precios").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const id = e.target.dataset.id;
+          togglePrecios(id);
+        });
+      });
+      
+      // 2. Botones de Compra (NUEVO: Seguimiento de clics)
+      document.querySelectorAll(".tracked-buy").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const id = e.target.dataset.id;
+          const precio = e.target.dataset.precio;
+          registrarClickCompra(id, precio);
+        });
+      });
+
+      // 3. Botones de Calificar y Estrellas (Lógica original)
+      document.querySelectorAll(".btn-calificar").forEach(btn => {
+        btn.addEventListener("click", e => {
+          const id = e.target.dataset.id;
+          const ratingBox = document.getElementById("rating-" + id);
+          const estrellasDiv = ratingBox.querySelector(".estrellas");
+          estrellasDiv.classList.add("activo");
+          e.target.style.display = "none";
+        });
+      });
+
+      document.querySelectorAll(".estrella").forEach(estrella => {
+        estrella.addEventListener("click", e => {
+          const id = e.target.dataset.id;
+          if (usuarioYaCalifico(id)) return;
+
+          const valor = parseInt(e.target.dataset.valor);
+          const productoRef = ref(db, "productos/" + id);
+
+          onValue(productoRef, (snap) => {
+            const prod = snap.val();
+            if (!prod) return;
+            const votos = (prod.votos || 0) + 1;
+            const nuevoRating = ((prod.rating || 0) * (votos - 1) + valor) / votos;
+
+            update(productoRef, { rating: nuevoRating, votos: votos }).then(() => {
+              guardarCalificacionLocal(id);
+              const ratingBox = document.getElementById("rating-" + id);
+              const estrellasDiv = ratingBox.querySelector(".estrellas");
+              const ratingText = ratingBox.querySelector(".rating-text");
+              estrellasDiv.classList.remove("activo");
+              estrellasDiv.innerHTML = renderEstrellas(id, Math.round(nuevoRating));
+              ratingText.textContent = `${nuevoRating.toFixed(1)} / 5 (${votos} votos)`;
+            });
+          }, { onlyOnce: true });
+        });
+      });
+    });
+
+    // === LÓGICA DE RESTRICCIÓN DE COMENTARIOS (original) ===
+    const _24_HORAS_EN_MS = 24 * 60 * 60 * 1000;
+    // ... funciones puedeComentar y guardarComentarioLocal (sin cambios) ...
+    function puedeComentar() {
+      const ultimoComentario = localStorage.getItem("ultimoComentarioTimestamp");
+      if (!ultimoComentario) {
+        return true; 
+      }
+      const tiempoTranscurrido = Date.now() - parseInt(ultimoComentario);
+      return tiempoTranscurrido > _24_HORAS_EN_MS;
+    }
+
+    function guardarComentarioLocal() {
+      localStorage.setItem("ultimoComentarioTimestamp", Date.now().toString());
+    }
+
+    // === SISTEMA DE RESEÑAS (original) ===
+    const reseñaInput = document.getElementById("reseñaTexto");
+    const nombreInput = document.getElementById("reseñaNombre");
+    const btnReseña = document.getElementById("btnReseña");
+    const listaReseñas = document.getElementById("listaReseñas");
+
+    btnReseña.addEventListener("click", () => {
+      if (!puedeComentar()) {
+        alert("Solo puedes dejar un comentario cada 24 horas. ¡Vuelve pronto!");
+        return;
+      }
+      
+      const texto = reseñaInput.value.trim();
+      const nombre = nombreInput.value.trim();
+      if (texto.length === 0 || nombre.length === 0) {
+        alert("Por favor, completa todos los campos.");
+        return;
+      }
+      if (texto.length > 200 || nombre.length > 40) {
+        alert("El nombre debe tener máximo 40 caracteres y la reseña máximo 200.");
+        return;
+      }
+
+      const reseñasRef = ref(db, "reseñas");
+      const nuevaReseña = push(reseñasRef);
+      set(nuevaReseña, { nombre, texto, fecha: new Date().toLocaleString() })
+        .then(() => {
+          guardarComentarioLocal(); 
+          reseñaInput.value = "";
+          nombreInput.value = "";
+        })
+        .catch(() => alert("Error al guardar la reseña. Intenta de nuevo."));
+    });
+
+    onValue(ref(db, "reseñas"), (snapshot) => {
+      listaReseñas.innerHTML = "";
+      const data = snapshot.val();
+      if (!data) {
+        listaReseñas.innerHTML = "<p>No hay reseñas aún.</p>";
+        return;
+      }
+
+      const reseñasEntries = Object.entries(data);
+      if (reseñasEntries.length > 100) {
+        const sobrantes = reseñasEntries.length - 100;
+        const reseñasViejas = reseñasEntries.slice(0, sobrantes);
+        reseñasViejas.forEach(([key]) => {
+          remove(ref(db, "reseñas/" + key));
+        });
+      }
+
+      const reseñasArray = reseñasEntries.slice(-100).reverse();
+      reseñasArray.forEach(([id, r]) => {
+        listaReseñas.innerHTML += `
+          <div class="reseña">
+            <h4>${r.nombre}</h4>
+            <p>${r.texto}</p>
+            <span>${r.fecha}</span>
+          </div>`;
+      });
+    });
+
+    // === FONDO DE PARTÍCULAS (original) ===
+    window.onload = () => {
+      tsParticles.load("tsparticles", {
+        background: { color: "#000" },
+        particles: {
+          number: { value: 80 },
+          color: { value: "#00FF00" }, /* Verde Neón */
+          shape: { type: "circle" },
+          opacity: { value: 0.5 },
+          size: { value: 3 },
+          move: { enable: true, speed: 1 },
+          links: { enable: true, color: "#00FFFF", opacity: 0.4, distance: 120 } /* Azul Eléctrico */
+        }
+      });
+    };
+  </script>
+
   <style>
-    :root{
-      --bg:#0f1724;
-      --accent:#7c3aed;
-      --muted:#94a3b8;
-      font-family:'Inter',system-ui,sans-serif;
-      color-scheme:dark;
+    /* ---------------------------------------------------- */
+    /* === ESTILOS MODIFICADOS PARA ETIQUETA "MÁS VENDIDO" === */
+    /* ---------------------------------------------------- */
+    
+    body {
+      margin: 0;
+      background: #000;
+      color: #fff;
+      font-family: 'Poppins', sans-serif;
+      overflow-x: hidden;
     }
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{
-      background:radial-gradient(circle at top left,rgba(124,58,237,0.15),transparent 60%),var(--bg);
-      height:100vh;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      padding:20px;
+    
+    /* Título Principal (h1) - Azul Eléctrico */
+    h1 {
+      text-align: center;
+      color: #00FFFF;
+      text-shadow: 0 0 18px #00FFFF, 0 0 25px #00FFFF;
+      z-index: 2;
+      position: relative;
+      font-size: 2.8em;
+      margin-top: 30px;
+      margin-bottom: 10px;
     }
-    .card{
-      background:rgba(255,255,255,0.05);
-      border:1px solid rgba(255,255,255,0.1);
-      border-radius:16px;
-      padding:40px;
-      max-width:400px;
-      text-align:center;
-      box-shadow:0 10px 30px rgba(0,0,0,0.4);
+
+    /* Subtítulo (h3) - Rojo Neón */
+    h3 {
+      text-align: center;
+      color: #FF00FF;
+      text-shadow: 0 0 12px #FF00FF, 0 0 20px #FF00FF;
+      z-index: 2;
+      position: relative;
+      font-size: 1.5em;
+      margin-bottom: 40px;
+      text-transform: uppercase;
     }
-    h1{
-      color:#fff;
-      font-size:1.5rem;
-      margin-bottom:12px;
+
+    #tsparticles {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      top: 0;
+      left: 0;
     }
-    p{
-      color:var(--muted);
-      font-size:1rem;
-      margin-bottom:24px;
+    
+    /* === ESTILOS DEL LOADER (sin cambios) === */
+    #loader {
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        background-color: #000;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        transition: opacity 0.5s ease-out;
     }
-    a.btn{
-      display:inline-block;
-      background:linear-gradient(90deg,var(--accent),#4f46e5);
-      color:#fff;
-      font-weight:600;
-      padding:12px 24px;
-      border-radius:10px;
-      text-decoration:none;
-      transition:transform .15s ease,box-shadow .15s ease;
+    .spinner {
+        border: 4px solid rgba(0, 255, 0, 0.1);
+        border-top: 4px solid #00FF00;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
     }
-    a.btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(79,70,229,0.25);}
+    .loader-text {
+        color: #00FF00;
+        font-size: 1.2em;
+        text-shadow: 0 0 10px #00FF00;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    /* === CONTENEDOR DE PRODUCTOS (COLUMNA ÚNICA) === */
+    #productos {
+      display: grid;
+      grid-template-columns: 1fr; 
+      gap: 25px; 
+      padding: 20px;
+      z-index: 2;
+      position: relative;
+      justify-items: center; 
+    }
+    
+    .producto {
+      background: rgba(0,0,20,0.85);
+      border: 1px solid #00FF00;
+      border-radius: 15px;
+      box-shadow: 0 0 25px #00FF0055;
+      padding: 15px;
+      text-align: center;
+      transition: transform .3s;
+      max-width: 450px; 
+      width: 100%; 
+      margin: 0 auto;
+      position: relative; /* Clave para posicionar la etiqueta */
+      overflow: hidden; /* Asegura que la etiqueta no cause scroll horizontal */
+    }
+    .producto:hover {
+      transform: scale(1.03);
+      box-shadow: 0 0 40px #00FF00aa;
+    }
+
+    /* === ESTILO DE LA ETIQUETA MÁS VENDIDO === */
+    .ribbon span {
+    /* ... */
+    background-color: #FF0000; /* Fondo Rojo */
+    /* ... */
+    text-shadow: 0 0 3px #000000; 
+    border: 1px solid #FF0000; /* Borde Cambiado a Rojo */
+    /* Puedes añadir: box-shadow: 0 0 10px #FF0000; si quieres una sombra roja */
+}
+
+
+    .ribbon span {
+        position: absolute;
+        display: block;
+        width: 225px; /* Longitud del texto */
+        padding: 8px 0;
+        background-color: #FF0000; /* Fondo Rojo Neón */
+        box-shadow: 0 5px 10px rgba(0,0,0,0.2);
+        color: #000; /* Texto oscuro para alto contraste */
+        font-size: 14px;
+        font-weight: bold;
+        text-align: center;
+        text-transform: uppercase;
+        
+        /* === ROTACIÓN Y POSICIONAMIENTO CLAVE === */
+        transform: rotate(45deg); 
+        right: -35px; /* Ajuste para que se vea en la esquina */
+        top: 25px; /* Ajuste vertical */
+        
+        /* Efecto Neón para el texto */
+        text-shadow: 0 0 3px #000000; 
+        border: 1px solid #00FFFF; /* Borde Azul Neón para contraste */
+    }
+    /* ======================================= */
+    
+    .producto img {
+      width: 100%;
+      height: auto;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      border: 1px solid #00FFFF;
+    }
+    
+    /* Estilos para precios (sin cambios) */
+    .precios.oculto {
+      max-height: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition: max-height 0.4s ease-out, opacity 0.4s ease-out;
+    }
+    .precios {
+      max-height: 500px; 
+      opacity: 1;
+      transition: max-height 0.4s ease-in, opacity 0.4s ease-in;
+      padding-top: 10px;
+      border-top: 1px dashed #00FFFF55;
+    }
+    
+    /* Botón de Ver/Ocultar Precios (Rojo Neón) */
+    .btn-toggle-precios {
+      background: #FF00FF33; 
+      border: 1px solid #FF00FF;
+      color: #FF00FF;
+      padding: 8px 20px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: .3s;
+      margin: 15px auto; 
+      display: block; 
+      width: 80%; 
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    .btn-toggle-precios:hover { 
+      background: #FF00FF; 
+      color: #000; 
+      box-shadow: 0 0 15px #FF00FF; 
+    }
+    
+    .precio-item {
+      margin: 8px 0;
+      padding: 5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 1em;
+      background: rgba(0, 255, 255, 0.05);
+      border-radius: 5px;
+    }
+    
+    /* Botón Comprar (Azul Eléctrico) */
+    .btn-comprar {
+      background: #00FFFF33;
+      border: 1px solid #00FFFF;
+      color: #00FFFF;
+      padding: 5px 10px;
+      border-radius: 10px;
+      text-decoration: none;
+      transition: .3s;
+      font-size: 0.9em;
+    }
+    .btn-comprar:hover {
+      background: #00FFFF;
+      color: #000;
+      box-shadow: 0 0 15px #00FFFF;
+    }
+
+    .rating-box { margin-bottom: 10px; }
+    .estrellas {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 5px;
+      pointer-events: none;
+    }
+    .estrellas.activo { pointer-events: auto; }
+    
+    /* Estrellas (Amarillo Neón) */
+    .estrella { 
+      font-size: 24px; 
+      color: #333;
+      cursor: pointer; 
+      transition: 0.3s; 
+    }
+    .estrella:hover, .estrella.activa { 
+      color: #FFFF00; 
+      text-shadow: 0 0 10px #FFFF00; 
+    }
+    .rating-text { font-size: 0.9em; color: #888; margin-bottom: 5px; }
+    
+    /* Botón Calificar (Verde Neón) */
+    .btn-calificar {
+      background: #00FF0033; border: 1px solid #00FF00; color: #00FF00;
+      padding: 6px 15px; border-radius: 10px; cursor: pointer; transition: .3s;
+      font-weight: bold;
+    }
+    .btn-calificar:hover { 
+      background: #00FF00; color: #000; box-shadow: 0 0 15px #00FF00; 
+    }
+
+    /* BOX DE RESEÑAS (sin cambios) */
+    #reseñas {
+      background: rgba(0,0,20,0.85);
+      border: 2px solid #00FF00;
+      border-radius: 20px;
+      width: 90%;
+      max-width: 550px;
+      margin: 60px auto;
+      padding: 30px;
+      box-shadow: 0 0 35px #00FF0055;
+      text-align: center;
+      position: relative;
+      z-index: 2;
+    }
+    #reseñas input, #reseñas textarea {
+      width: 90%;
+      background: #000;
+      border: 1px solid #00FFFF;
+      color: #00FF00;
+      border-radius: 10px;
+      padding: 10px;
+      margin: 8px 0;
+      resize: vertical;
+      box-shadow: 0 0 5px #00FFFF55;
+    }
+    /* Botón de Reseña (Rojo Neón) */
+    #reseñas button {
+      background: #FF00FF33;
+      border: 1px solid #FF00FF;
+      color: #FF00FF;
+      padding: 10px 20px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: .3s;
+      margin-top: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    #reseñas button:hover { 
+      background: #FF00FF; 
+      color: #000; 
+      box-shadow: 0 0 15px #FF00FF; 
+    }
+    
+    /* Estilos de lista de reseñas (sin cambios) */
+    #listaReseñas {
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 20px;
+      scrollbar-width: thin;
+      scrollbar-color: #00FF00 #000;
+    }
+    #listaReseñas::-webkit-scrollbar { width: 8px; }
+    #listaReseñas::-webkit-scrollbar-thumb { background: #00FF00; border-radius: 10px; }
+    
+    .reseña {
+      border: 1px solid #00FFFF44;
+      border-radius: 10px;
+      padding: 15px;
+      margin: 15px auto;
+      width: 90%;
+      background: rgba(0, 255, 0, 0.05);
+      box-shadow: 0 0 15px #00FFFF22;
+      text-align: left;
+    }
+    .reseña h4 { 
+      color: #00FFFF;
+      margin: 0 0 5px 0; 
+      font-size: 1.1em;
+    }
+    .reseña p { margin: 5px 0; color: #fff; }
+    .reseña span { font-size: 0.8em; color: #555; }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      color: #00FF00;
+      font-size: 0.9em;
+      text-shadow: 0 0 5px #00FF0055;
+      z-index: 2;
+      position: relative;
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Esta página fue actualizada</h1>
-    <p>Toca el botón para abrir la nueva página de <strong>Luck Store</strong>.</p>
-    <a class="btn" href="https://lucck-store.netlify.app/" target="_blank" rel="noopener noreferrer">Ir a la página nueva</a>
+  <div id="tsparticles"></div>
+  
+  <div id="loader">
+      <div class="spinner"></div>
+      <div class="loader-text">Cargando Porfavor espere...</div>
   </div>
+  <h1>𝐋𝐔𝐂𝐊 𝐗!𝐓 | 𝐒𝐓𝐎𝐑𝐄</h1>
+  <h3>COMPRA TU HACK FAVORITO</h3>
+  <div id="productos"></div>
+
+  <section id="reseñas">
+    <h3>💬 Deja tu reseña</h3>
+    <input type="text" id="reseñaNombre" placeholder="Tu nombre (máx. 40)" maxlength="40"><br>
+    <textarea id="reseñaTexto" placeholder="Escribe tu reseña (máx. 200)" maxlength="200"></textarea><br>
+    <button id="btnReseña">Dejar reseña</button>
+    <div id="listaReseñas"></div>
+  </section>
+
+  <footer>© 2024 - 2025 𝐋𝐔𝐂𝐊 𝐗!𝐓</footer>
 </body>
 </html>
